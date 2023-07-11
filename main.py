@@ -2,6 +2,7 @@ import threading
 
 import cv2 as cv
 import numpy as np
+import itertools
 
 from constants import (
     COLORS,
@@ -11,6 +12,7 @@ from constants import (
     RED_COLOR,
     VIDEO_CAPTURE_SOURCE,
     WHITE_COLOR,
+    WS_EVENT_PLAYERS_UPDATED,
 )
 from detect import detect_players
 from display import (
@@ -19,12 +21,15 @@ from display import (
     display_points,
     display_zone,
 )
-from distance import destination_point, points_too_close, transformation_matrix
+from distance import destination_point, add_players_too_close, transformation_matrix
 from models.field import Field
 from selected_point import SelectedPoint
-from web import app, queue
+import web
+
 
 cap = cv.VideoCapture(VIDEO_CAPTURE_SOURCE)
+
+cap.set(cv.CAP_PROP_POS_FRAMES, 15 * cap.get(cv.CAP_PROP_FPS))
 
 
 class FieldDetector:
@@ -32,6 +37,7 @@ class FieldDetector:
         self.field = Field(self)
         self.move_point = SelectedPoint(self.field)
         self.frame = None
+        self.players_too_close = []
 
     def transform_frame(self, frame, M):
         height, width = frame.shape[:2]
@@ -91,12 +97,23 @@ class FieldDetector:
         )
 
         detected_players = detect_players(field_frame)
-        players = detected_players.items()
-        player_field_points = detected_players.values()
 
-        player_indexes_too_close = points_too_close(frame, player_field_points)
+        players = [
+            {"color": color, "point": point}
+            for color, point in detected_players.items()
+        ]
+        players = add_players_too_close(frame, players)
 
-        self.display_player_points(field_frame, players, player_indexes_too_close)
+        if self.players_too_close != players_too_close:
+            self.players_too_close = players_too_close
+            web.send_message(
+                WS_EVENT_PLAYERS_UPDATED,
+                self.players_too_close,
+            )
+
+        all_player_indexes_too_close = set(itertools.chain(*self.players_too_close))
+
+        self.display_player_points(field_frame, players, all_player_indexes_too_close)
         self.display_player_points(
             frame,
             [
@@ -108,7 +125,7 @@ class FieldDetector:
                 )
                 for type, p in players
             ],
-            player_indexes_too_close,
+            all_player_indexes_too_close,
         )
         if not ENABLE_WEB:
             cv.imshow("Field", field_frame)
@@ -142,7 +159,7 @@ class FieldDetector:
             )
             display_current_timestamp(cap, frame)
 
-            queue.put(frame.copy())
+            web.queue.put(frame.copy())
 
             cv.setMouseCallback("Image", self.click_event)  # type: ignore
             if not ENABLE_WEB:
@@ -161,7 +178,7 @@ def main():
         t.daemon = True
         t.start()
 
-        app.run(debug=True)
+        web.run()
     else:
         start_field_detector()
 

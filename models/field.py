@@ -2,7 +2,7 @@ from distance import transformation_matrix
 
 
 class Field:
-    points = [(645, 135), (1174, 132), (185, 613), (1442, 604)]
+    points = [(722, 268), (1119, 268), (76, 761), (1725, 742)]
 
     def __init__(self, app):
         self.app = app

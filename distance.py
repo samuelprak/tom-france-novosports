@@ -47,12 +47,14 @@ def field_distance_between_all_frame_points(frame, points: list):
     return distance_matrix
 
 
-def points_too_close(frame, points):
+def add_players_too_close(frame, players):
+    points = [p["position"] for p in players]
+
     distance_matrix = field_distance_between_all_frame_points(frame, points)
     points_too_close = set()
     for i, row in enumerate(distance_matrix):
         for j, distance in enumerate(row):
             if i != j and distance < WARNING_DISTANCE:
-                points_too_close.add(i)
-                points_too_close.add(j)
-    return points_too_close
+                points_too_close.add(tuple(sorted([i, j])))
+
+    # return [{**p, "too_close": } for p in players]
